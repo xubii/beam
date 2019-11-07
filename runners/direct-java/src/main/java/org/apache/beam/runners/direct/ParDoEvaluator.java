@@ -252,6 +252,7 @@ class ParDoEvaluator<InputT> implements TransformEvaluator<InputT> {
     } else {
       resultBuilder = StepTransformResult.withoutHold(transform);
     }
+
     return resultBuilder
         .addOutput(outputManager.bundles.values())
         .withTimerUpdate(stepContext.getTimerUpdate())
