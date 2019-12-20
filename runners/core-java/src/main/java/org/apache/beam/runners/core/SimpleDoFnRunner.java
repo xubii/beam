@@ -202,7 +202,10 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
         effectiveTimestamp = outputTimestamp;
         break;
       case PROCESSING_TIME:
-        effectiveTimestamp = outputTimestamp != null ? outputTimestamp : stepContext.timerInternals().currentInputWatermarkTime();
+        effectiveTimestamp =
+            outputTimestamp.equals(timestamp)
+                ? stepContext.timerInternals().currentInputWatermarkTime()
+                : outputTimestamp;
         break;
       case SYNCHRONIZED_PROCESSING_TIME:
         effectiveTimestamp = stepContext.timerInternals().currentInputWatermarkTime();
@@ -933,7 +936,6 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     @Override
     public void set(Instant target) {
       this.target = target;
-      verifyAbsoluteTimeDomain();
       setAndVerifyOutputTimestamp();
       setUnderlyingTimer();
     }
@@ -985,38 +987,27 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
       return this;
     }
 
-    /** Verifies that the time domain of this timer is acceptable for absolute timers. */
-    private void verifyAbsoluteTimeDomain() {
-      if (!TimeDomain.EVENT_TIME.equals(spec.getTimeDomain()) && !TimeDomain.PROCESSING_TIME.equals(spec.getTimeDomain())) {
-        throw new IllegalStateException(
-            "Cannot only set relative timers in processing time domain." + " Use #setRelative()");
-      }
-    }
-
     /**
      *
      *
      * <ul>
      *   Ensures that:
-     *   <li>Users can't set {@code outputTimestamp} for processing time timers.
      *   <li>Event time timers' {@code outputTimestamp} is set before window expiration.
      * </ul>
      */
     private void setAndVerifyOutputTimestamp() {
       // Output timestamp is set to the delivery time if not initialized by an user.
-      if (outputTimestamp == null && TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
+      if (outputTimestamp == null) {
         outputTimestamp = target;
       }
 
-      if (TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
-        Instant windowExpiry = window.maxTimestamp().plus(allowedLateness);
-        checkArgument(
-            !outputTimestamp.isAfter(windowExpiry),
-            "Attempted to set event time timer that outputs for %s but that is"
-                + " after the expiration of window %s",
-            outputTimestamp,
-            windowExpiry);
-      }
+      Instant windowExpiry = window.maxTimestamp().plus(allowedLateness);
+      checkArgument(
+          !outputTimestamp.isAfter(windowExpiry),
+          "Attempted to set time timer that outputs for %s but that is"
+              + " after the expiration of window %s",
+          outputTimestamp,
+          windowExpiry);
     }
 
     /**
