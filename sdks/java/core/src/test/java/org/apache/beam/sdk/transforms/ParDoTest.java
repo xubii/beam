@@ -3775,6 +3775,48 @@ public class ParDoTest implements Serializable {
       pipeline.run();
     }
 
+
+    @Test
+    @Category({
+            ValidatesRunner.class,
+            UsesStatefulParDo.class,
+            UsesTimersInParDo.class,
+            UsesTestStream.class
+    })
+    public void testValueStateProcessingTimeSimple() {
+      final String timerId = "bar";
+      DoFn<KV<String, Integer>, Integer> fn =
+              new DoFn<KV<String, Integer>, Integer>() {
+
+                @TimerId(timerId)
+                private final TimerSpec timer = TimerSpecs.timer(TimeDomain.PROCESSING_TIME);
+
+                @ProcessElement
+                public void processElement(ProcessContext c, @TimerId(timerId) Timer timer) {
+                  timer.withOutputTimestamp(new Instant(1)).offset(Duration.standardSeconds(2)).setRelative();
+                }
+
+                @OnTimer(timerId)
+                public void onTimer(OnTimerContext c, BoundedWindow w) {
+                  c.output(100);
+                }
+              };
+
+      TestStream<KV<String, Integer>> stream =
+              TestStream.create(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
+                      .addElements(KV.of("key", 1))
+                      .advanceProcessingTime(Duration.standardSeconds(5))
+                      .advanceWatermarkToInfinity();
+      PCollection<Integer> output =
+              pipeline
+                      .apply(stream)
+                      .apply("first", ParDo.of(fn));
+
+      PAssert.that(output)
+              .containsInAnyOrder(100); // result output
+      pipeline.run();
+    }
+
     private static class TwoTimerTest extends PTransform<PBegin, PDone> {
 
       private static PTransform<PBegin, PDone> of(

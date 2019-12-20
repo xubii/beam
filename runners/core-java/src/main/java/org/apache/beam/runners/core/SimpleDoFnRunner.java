@@ -202,6 +202,8 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
         effectiveTimestamp = outputTimestamp;
         break;
       case PROCESSING_TIME:
+        effectiveTimestamp = outputTimestamp != null ? outputTimestamp : stepContext.timerInternals().currentInputWatermarkTime();
+        break;
       case SYNCHRONIZED_PROCESSING_TIME:
         effectiveTimestamp = stepContext.timerInternals().currentInputWatermarkTime();
         break;
@@ -985,7 +987,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
 
     /** Verifies that the time domain of this timer is acceptable for absolute timers. */
     private void verifyAbsoluteTimeDomain() {
-      if (!TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
+      if (!TimeDomain.EVENT_TIME.equals(spec.getTimeDomain()) && !TimeDomain.PROCESSING_TIME.equals(spec.getTimeDomain())) {
         throw new IllegalStateException(
             "Cannot only set relative timers in processing time domain." + " Use #setRelative()");
       }
@@ -1001,12 +1003,8 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
      * </ul>
      */
     private void setAndVerifyOutputTimestamp() {
-      // Output timestamp is currently not supported in processing time timers.
-      if (outputTimestamp != null && !TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
-        throw new IllegalStateException("Cannot set outputTimestamp in processing time domain.");
-      }
       // Output timestamp is set to the delivery time if not initialized by an user.
-      if (outputTimestamp == null) {
+      if (outputTimestamp == null && TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
         outputTimestamp = target;
       }
 
